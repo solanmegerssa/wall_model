@@ -20,3 +20,9 @@ cistern_outlet_diam = 2; % inches
 cistern_pump_pipe_length = 1; % feet
 
 pump_inlet_area = 3.14*1^2; % inches^2
+
+% pressure tank properties
+ptank_pipe_length = 10 % ft
+
+ptank_diam =  15 % inches
+ptank_length = 31 % inches
