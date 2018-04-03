@@ -22,7 +22,13 @@ cistern_pump_pipe_length = 1; % feet
 pump_inlet_area = 3.14*1^2; % inches^2
 
 % pressure tank properties
-ptank_pipe_length = 10 % ft
+ptank_pipe_length = 10; % ft
+ptank_diam =  15; % inches
+ptank_length = 31; % inches
 
-ptank_diam =  15 % inches
-ptank_length = 31 % inches
+% hot water heater properties
+heater_pipe_length = 5; % ft
+heater_diam = 20; % in
+heater_length = 60; % in
+
+
