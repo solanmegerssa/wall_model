@@ -2,6 +2,7 @@
 
 
 % roof properties
+roof_area = 2000 % ft^2
 roof_cistern_pipe_length = 10; % feet
 roof_height = 15; % feet
 
