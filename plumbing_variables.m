@@ -1,4 +1,4 @@
-q%% Parameters of interest for WALL water system
+%% Parameters of interest for WALL water system
 
 
 % roof properties
@@ -31,5 +31,8 @@ ptank_length = 31; % inches
 heater_pipe_length = 5; % ft
 heater_diam = 20; % in
 heater_length = 60; % in
+
+
+
 
 
