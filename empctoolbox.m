@@ -316,7 +316,8 @@ end
                 % disturbance
                 dst{j} = zeros(1,Nd)';
                 c{j} = zeros(Nd,1);
-                %c{j} =  randSine(1,2,Nd,Ts)'; % local cost                
+                %c{j} =  randSine(1,2,Nd,Ts)'; % local cost
+                
         end
         
         % Kalman filter init
