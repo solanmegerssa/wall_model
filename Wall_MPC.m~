@@ -59,8 +59,8 @@ H = sdpvar(N,1); % pressure head
 Q = sdpvar(S,1); % pipe flowrate
 C = sdpvar(repmat(T,1,Nf),repmat(1,1,Nf)); % water inflow
 D = sdpvar(repmat(T,1,Nf),repmat(1,1,Nf)); % water outflow
-W_util = sdpvar(repmat(N,1,Nf),repmat(N,1,Nf)); % utility inflow
-W_waste = sdpvar(repmat(N,1,Nf),repmat(N,1,Nf)); % waste outflow
+W_util = sdpvar(repmat(1,1,Nf),repmat(1,1,Nf)); % utility inflow
+W_waste = sdpvar(repmat(1,1,Nf),repmat(1,1,Nf)); % waste outflow
 P_pump = sdpvar(repmat(1,1,Nf),repmat(1,1,Nf)); % Pump power
 
 % pipe linearization variables
@@ -104,7 +104,7 @@ for k = 1:N
         70 <= B*A'*H <= 80,
         P_pump{k} == B*Q*B*A'*H/435 + 70*10^-3,
         
-        % water conservation
+        % 
         W_waste{k} >= 0.5*B*Q
         
         
