@@ -3,7 +3,7 @@
 % graph properties
 S = 6; % number of arcs
 N = 7; % number of nodes
-T = 3; % number of tanks
+T = 2; % number of tanks
 
 % node-arc incidence matrix
 A = [1 0 0 0 0 0; -1 1 0 0 0 0; 0 -1 1 0 0 0; 
@@ -12,23 +12,23 @@ A = [1 0 0 0 0 0; -1 1 0 0 0 0; 0 -1 1 0 0 0;
 % pump-arc incidence matrix
 B = [0 0 0 0 0 1];
 
-% utility-node incidenc matrix
-M = [1 0 0 0 0 0 0];
+% reservoir-node incidenc matrix
+M = [1 0 0 0 0 0 0; 0 0 0 0 1 0 0];
 
-% tank-node incidenc matrix
-lambda = [0 1 0 0 0 0 0; 0 0 0 0 1 0 0; 0 0 0 0 0 0 1];
+% tank-node incidence matrix
+lambda = [0 1 0 0 0 0 0; 0 0 0 0 0 0 1];
 
 % tank parameters
 v1 = 100.0; % gal
 a2 = .25; % m^2
-v2 = 100.0; % gal
-V0 = [75; 10; 75];
+v3 = 100.0; % gal
+V0 = [75; 75];
 max_inflow = 20; % gpm
 max_outflow = 20; % gpm
 
 % tank-pressure relation matrix
-D1 = [v1/60 0 0; 0 6894.76*a2/(9.81*997) 0; 0 0 v2/60];
-D2 = [-15; 0; -15];
+D1 = [v1/60 0; 0 v3/60];
+D2 = [-15; -15];
 
 % pipe parameters
 pipe_d = .5; % in
@@ -40,64 +40,98 @@ max_head = 100; % psi
 min_head = 10; % psi
 max_pipeflow = 30; % gpm
 
-% cost function
+% horizon parameters
+Tf = 23*60; % minutes
+step = .5; % minutes
+Nf = Tf/step;
+
+% cost function params
 PD_water = .03; % kw/gallon
 phi_water = .2; % $/gal
-phi_e = ;
+cost_file = csvread('June28_CAISOAVERAGEPRICE.csv', 1, 1);
+t = 0:5:(24*60-5);
+ts = step:step:23*60;
+phi_e = interp1(t,cost_file,ts);
+
+% water properties
+rho = 998; % kg/m^2
+g = 9.8; % m/s^2
 
 
 %% Optimization
 
-% horizon parameters
-Tf = 24*60; % minutes
-step = .5; % minutes
-Nf = Tf/step;
+% Random demand
+t_hours = 0:60:23*60;
+demand = [0 0 0 0 1 4 11 12 8 8 11 5 2 3 5 7 9 6 8 6 6 3 2 1]; % hourly demand gph
+demand_minute = interp1(t_hours, demand, ts)/60 + normrnd(2,0.3,1,Nf);
+demand_minute(demand_minute<0) = 0;
 
 % decision variables and initial condition
-v0 = sdpvar(1,3); % initial tank vol
-H = sdpvar(N,1); % pressure head
-Q = sdpvar(S,1); % pipe flowrate
+v_cist0 = sdpvar(1,1); % initial grey cistern vol
+vp0 = sdpvar(2,1); % initial pressure tank vol
+H = sdpvar(repmat(N,1,Nf),repmat(1,1,Nf)); % pressure head
+Q = sdpvar(repmat(S,1,Nf),repmat(1,1,Nf)); % pipe flowrate
 C = sdpvar(repmat(T,1,Nf),repmat(1,1,Nf)); % water inflow
 D = sdpvar(repmat(T,1,Nf),repmat(1,1,Nf)); % water outflow
-W_util = sdpvar(repmat(N,1,Nf),repmat(N,1,Nf)); % utility inflow
-W_waste = sdpvar(repmat(N,1,Nf),repmat(N,1,Nf)); % waste outflow
-P_pump = sdpvar(repmat(1,1,Nf),repmat(1,1,Nf)); % Pump power
+
+W_pull = sdpvar(repmat(N,1,Nf),repmat(1,1,Nf)); % inflow from util and grey
+W_waste = sdpvar(repmat(N,1,Nf),repmat(1,1,Nf)); % waste outflow
+W_rec = sdpvar(repmat(N,1,Nf),repmat(1,1,Nf)); % recycle flow
+P_pump = sdpvar(repmat(1,1,Nf),repmat(1,1,Nf)); % pump power [kw]
+W_demand = sdpvar(repmat(N,1,Nf),repmat(1,1,Nf));
 
 % pipe linearization variables
 J = 5;
-lam = sdpvar(S,J);
+lam = sdpvar(repmat(S,J,Nf),repmat(1,1,Nf));
 q = sdpvar(S,J);
 al = sdpvar(S,J);
 
-
+%%
 % mpc
 constraints = [];
 objective = 0;
-v = v0;
+v = vp0;
+v_cist = v_cist0;
 for k = 1:N
     
-    % state evolution
+    % volume evolution
     v = v + C{k} - D{k};
     
-    objective = objective + norm(W_util{k}*phi_water,1) + norm(P_pump{k}*phi_e,1) + norm(W_waste{k}*phi_water,1);
+%     if k > 1
+%         inflow = M*W_rec{k-1};
+%         v_cist = v_cist + inflow(2);
+%     end
+    
+    % amount of recycle flow
+    %W_rec{k} = .9*W_demand{k};
+    
+    % objective optimizes for cost per unit water (cost of utility water,
+    % cost to filter, cost of waste)
+    objective = objective + W_pull{k}(1)*phi_water + P_pump{k}*phi_e(k) + W_waste{k}(1)*phi_water;
     
     % constraints
     constraints = [constraints,
         
         % tanks
         v == D1*lambda*H + D2,
-        [0; 0; 0] <= v <= [v1; 50; v2],
+        [0; 0] <= v <= [v1; v3],
+        0 <= v_cist <= 50,
         0 <= C{k} <= max_inflow,
         0 <= D{k} <= max_outflow,
         
-        % pressure loss
+        % pressure at utility and grey cistern'
+%         M*H == [50; v_cist*rho*g/(a2*6894.76)],
+        M*H == [50; 40],
+        
+        % pressure loss in pipes
+        H >= 0,
+        -max_pipeflow <= Q <= max_pipeflow,
         Q == sum(q.*lam,2),
-        -A'*H == sum(G*sign(q)*q^1.852*lam,2),
+        -A'*H == sum(G*sign(q).*q.^1.852.*lam,2),
         sum(al(:,J-1),2) == 1,
         sum(lam,2) == 1,
-        %% add constraint
         lam(:,1) <= al(:,1),
-        lam(:,J) <= al(:,J-1)',
+        lam(:,J) <= al(:,J-1),
         0 <= lam <= 1,
         
         % pumps
@@ -105,8 +139,18 @@ for k = 1:N
         P_pump{k} == B*Q*B*A'*H/435 + 70*10^-3,
         
         % water conservation
-        W_waste{k} >= 0.5*B*Q
-        
-        
-    
+        W_waste{k}([1:5,7]) == zeros(6,1),
+%         W_waste{k}(6) >= 0.5*B*Q,
+        W_waste{k}(6) >= 0,
+        W_demand{k}(3) == demand_minute(k)*.3,
+        W_demand{k}(4) == demand_minute(k)*.7,
+        W_demand{k}([1:2,5:7]) == zeros(5,1),
+        W_pull{k} - W_demand{k} - W_waste{k} == A*Q + lambda'*(C{k}-D{k})]
+    for j = 2:J-1
+        constraints = [constraints, lam(:,j) <= al(:,j-1) + al(:,j)]
+    end
+end
+
+%% optimize
+optimize([constraints, v_cist0 == 25, vp0 == V0], objective); 
     
