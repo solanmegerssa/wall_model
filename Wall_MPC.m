@@ -69,22 +69,22 @@ demand_minute(demand_minute<0) = 0;
 % decision variables and initial condition
 v_cist0 = sdpvar(1,1); % initial grey cistern vol
 vp0 = sdpvar(2,1); % initial pressure tank vol
-H = sdpvar(repmat(N,1,Nf),repmat(1,1,Nf)); % pressure head
-Q = sdpvar(repmat(S,1,Nf),repmat(1,1,Nf)); % pipe flowrate
-C = sdpvar(repmat(T,1,Nf),repmat(1,1,Nf)); % water inflow
-D = sdpvar(repmat(T,1,Nf),repmat(1,1,Nf)); % water outflow
+H = sdpvar(N,Nf); % pressure head
+Q = sdpvar(S,Nf); % pipe flowrate
+C = sdpvar(T,Nf); % water inflow
+D = sdpvar(T,Nf); % water outflow
 
-W_pull = sdpvar(repmat(N,1,Nf),repmat(1,1,Nf)); % inflow from util and grey
-W_waste = sdpvar(repmat(N,1,Nf),repmat(1,1,Nf)); % waste outflow
-W_rec = sdpvar(repmat(N,1,Nf),repmat(1,1,Nf)); % recycle flow
-P_pump = sdpvar(repmat(1,1,Nf),repmat(1,1,Nf)); % pump power [kw]
-W_demand = sdpvar(repmat(N,1,Nf),repmat(1,1,Nf));
+W_pull = sdpvar(N,Nf); % inflow from util and grey
+W_waste = sdpvar(N,Nf); % waste outflow
+W_rec = sdpvar(N,Nf); % recycle flow
+P_pump = sdpvar(1,Nf); % pump power [kw]
+W_demand = sdpvar(N,Nf);
 
 % pipe linearization variables
-J = 5;
-lam = sdpvar(repmat(S,J,Nf),repmat(1,1,Nf));
-q = sdpvar(S,J);
-al = sdpvar(S,J);
+J = 2;
+lam = sdpvar(S,J,Nf);
+q = sdpvar(S,J,Nf);
+al = sdpvar(S,J,Nf);
 
 %%
 % mpc
@@ -92,10 +92,10 @@ constraints = [];
 objective = 0;
 v = vp0;
 v_cist = v_cist0;
-for k = 1:N
+for k = 1:5 % need to change to Nf
     
     % volume evolution
-    v = v + C{k} - D{k};
+    v = v + C(:,k) - D(:,k);
     
 %     if k > 1
 %         inflow = M*W_rec{k-1};
@@ -103,49 +103,54 @@ for k = 1:N
 %     end
     
     % amount of recycle flow
-    %W_rec{k} = .9*W_demand{k};
+    %W_rec(:,k) = .9*W_demand(:,k);
     
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
-    objective = objective + W_pull{k}(1)*phi_water + P_pump{k}*phi_e(k) + W_waste{k}(1)*phi_water;
+    objective = objective + W_pull(1,k)*phi_water + P_pump(1,k)*phi_e(k) + W_waste(1,k)*phi_e(k);
     
     % constraints
     constraints = [constraints,
         
         % tanks
-        v == D1*lambda*H + D2,
+        v == D1*lambda*H(:,k) + D2,
         [0; 0] <= v <= [v1; v3],
         0 <= v_cist <= 50,
-        0 <= C{k} <= max_inflow,
-        0 <= D{k} <= max_outflow,
+        0 <= C(:,k) <= max_inflow,
+        0 <= D(:,k) <= max_outflow,
         
         % pressure at utility and grey cistern'
 %         M*H == [50; v_cist*rho*g/(a2*6894.76)],
-        M*H == [50; 40],
+        M*H(:,k) == [50; 40],
         
         % pressure loss in pipes
-        H >= 0,
-        -max_pipeflow <= Q <= max_pipeflow,
-        Q == sum(q.*lam,2),
-        -A'*H == sum(G*sign(q).*q.^1.852.*lam,2),
-        sum(al(:,J-1),2) == 1,
-        sum(lam,2) == 1,
-        lam(:,1) <= al(:,1),
-        lam(:,J) <= al(:,J-1),
-        0 <= lam <= 1,
+        H(:,k) >= 0,
+        -max_pipeflow <= Q(:,k) <= max_pipeflow,
+        Q(:,k) == sum(q(:,:,k).*lam(:,:,k),2),
+        -A'*H(:,k) == sum(G*sign(q(:,:,k)).*q(:,:,k).^1.852.*lam(:,:,k),2),
+        sum(al(:,J-1,k),2) == 1,
+        sum(lam(:,:,k),2) == 1,
+        lam(:,1,k) <= al(:,1,k),
+        lam(:,J,k) <= al(:,J-1,k),
+        0 <= lam(:,:,k) <= 1,
         
         % pumps
-        70 <= B*A'*H <= 80,
-        P_pump{k} == B*Q*B*A'*H/435 + 70*10^-3,
+        70 <= B*A'*H(:,k) <= 80,
+        P_pump(:,k) == B*Q(:,k)*B*A'*H(:,k)/435 + 70*10^-3,
         
         % water conservation
-        W_waste{k}([1:5,7]) == zeros(6,1),
-%         W_waste{k}(6) >= 0.5*B*Q,
-        W_waste{k}(6) >= 0,
-        W_demand{k}(3) == demand_minute(k)*.3,
-        W_demand{k}(4) == demand_minute(k)*.7,
-        W_demand{k}([1:2,5:7]) == zeros(5,1),
-        W_pull{k} - W_demand{k} - W_waste{k} == A*Q + lambda'*(C{k}-D{k})]
+        W_waste([1:5,7],k) == zeros(6,1),
+%         W_waste(:,k)(6) >= 0.5*B*Q,
+        W_waste(6,k) >= 0,
+        
+        W_demand(3,k) == demand_minute(k)*.3,
+        W_demand(4,k) == demand_minute(k)*.7,
+        W_demand([1:2,5:7],k) == zeros(5,1),
+        
+        W_pull([2:4,6:7],k) == zeros(5,1),
+        W_pull([1,5],k) >= zeros(2,1),
+        W_pull(:,k) - W_demand(:,k) - W_waste(:,k) == A*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
+        
     for j = 2:J-1
         constraints = [constraints, lam(:,j) <= al(:,j-1) + al(:,j)]
     end
@@ -153,4 +158,32 @@ end
 
 %% optimize
 optimize([constraints, v_cist0 == 25, vp0 == V0], objective); 
-    
+
+%% test
+for i = 1:5
+    display('Head')
+    value(H(:,i))'
+    display('')
+    display('Flow rate')
+    value(Q(:,i))'
+    display('')
+    display('volume')
+    value(v)
+    display('')
+    display('W pull')
+    value(W_pull(:,i))'
+    display('')
+    display('W demand')
+    value(W_demand(:,i))'
+    display('')
+    display('W waste')
+    value(W_waste(:,i))'
+    display('Pump power')
+    value(P_pump(:,i))
+    display('tank inflow')
+    value(C(:,i))
+    display('tank draw')
+    value(D(:,i)) 
+end
+display('Objective')
+value(objective)
