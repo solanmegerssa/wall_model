@@ -1,5 +1,7 @@
 %% Parameters of interest for WALL water system
-
+days = 7
+tf = days*24*3600
+ts = 0:60:tf;
 
 % roof properties
 roof_area = 2000 % ft^2
