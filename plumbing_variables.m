@@ -1,5 +1,5 @@
 %% Parameters of interest for WALL water system
-days = 7
+days = 5
 tf = days*24*3600
 ts = 0:60:tf;
 
