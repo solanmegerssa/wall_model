@@ -92,7 +92,7 @@ constraints = [];
 objective = 0;
 v = vp0;
 v_cist = v_cist0;
-for k = 1:5 % need to change to Nf
+for k = 1:100 % need to change to Nf
     
     % volume evolution
     v = v + C(:,k) - D(:,k);
@@ -126,13 +126,15 @@ for k = 1:5 % need to change to Nf
         % pressure loss in pipes
         H(:,k) >= 0,
         -max_pipeflow <= Q(:,k) <= max_pipeflow,
-        Q(:,k) == sum(q(:,:,k).*lam(:,:,k),2),
-        -A'*H(:,k) == sum(G*sign(q(:,:,k)).*q(:,:,k).^1.852.*lam(:,:,k),2),
-        sum(al(:,J-1,k),2) == 1,
-        sum(lam(:,:,k),2) == 1,
-        lam(:,1,k) <= al(:,1,k),
-        lam(:,J,k) <= al(:,J-1,k),
-        0 <= lam(:,:,k) <= 1,
+%         Q(:,k) == sum(q(:,:,k).*lam(:,:,k),2),
+%         -A'*H(:,k) == sum(G*sign(q(:,:,k)).*q(:,:,k).^1.852.*lam(:,:,k),2),
+%         sum(al(:,J-1,k),2) == 1,
+%         sum(lam(:,:,k),2) == 1,
+%         lam(:,1,k) <= al(:,1,k),
+%         lam(:,J,k) <= al(:,J-1,k),
+%         0 <= lam(:,:,k) <= 1,
+
+        A*Q(:,k) == G*H(:,k)
         
         % pumps
         70 <= B*A'*H(:,k) <= 80,

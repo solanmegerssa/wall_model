@@ -1,7 +1,8 @@
 %% Parameters of interest for WALL water system
-days = 5
-tf = days*24*3600
+days = 7;
+tf = days*24*3600;
 ts = 0:60:tf;
+random_seed = rand();
 
 % roof properties
 roof_area = 2000 % ft^2
