@@ -57,6 +57,8 @@ phi_e = interp1(t,cost_file,ts);
 rho = 998; % kg/m^2
 g = 9.8; % m/s^2
 
+G = diag(
+
 
 %% Optimization
 
