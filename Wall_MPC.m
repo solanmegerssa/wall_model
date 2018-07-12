@@ -48,7 +48,7 @@ Nf = Tf/step;
 % cost function params
 PD_water = .03; % kw/gallon
 phi_water = .2; % $/gal
-cost_file = csvread('June28_CAISOAVERAGEPRICE.csv', 1, 1);
+cost_file = csvread('Data/June28_CAISOAVERAGEPRICE.csv', 1, 1);
 t = 0:5:(24*60-5);
 ts = step:step:23*60;
 phi_e = interp1(t,cost_file,ts);
@@ -57,8 +57,27 @@ phi_e = interp1(t,cost_file,ts);
 rho = 998; % kg/m^2
 g = 9.8; % m/s^2
 
-G = diag(
+% linearized pipe parameters
+h0 = [5 0.5 0.5 1 0.5 3]';
+c = 1.22E10;
+e1 = 1.85;
+e2 = 4.87;
+e3 = 1/e1 - 1;
+e4 = e3 - 1;
+rk = c*L*.3048/(130^e1*6.35^e2);
+gk = rk.^(-1/e1);
+g_branch = e3*gk.*h0.^e4;
+g_node = abs(A)*g_branch;
 
+g_branch = diag(g_branch)
+g_branch = -abs(A)*g_branch
+
+G = diag(g_node);
+for m = 2:N-1
+    G(m,[1:(m-1), (m+1):N]) = g_branch(m,:);
+end
+G(1,[2:N]) = g_branch(1,:);
+G(N,[1:N-1]) = g_branch(N,:);
 
 %% Optimization
 
@@ -123,7 +142,7 @@ for k = 1:100 % need to change to Nf
         
         % pressure at utility and grey cistern'
 %         M*H == [50; v_cist*rho*g/(a2*6894.76)],
-        M*H(:,k) == [50; 40],
+        M*H(:,k) == [60; 40],
         
         % pressure loss in pipes
         H(:,k) >= 0,

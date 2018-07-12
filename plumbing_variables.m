@@ -1,5 +1,5 @@
 %% Parameters of interest for WALL water system
-days = 1;
+days = 20;
 tf = days*24*3600;
 ts = 0:60:tf;
 random_seed = rand();
@@ -37,30 +37,45 @@ heater_length = 60; % in
 
 
 %%
-water_use = xlsread('Data/SampleWaterUse.xlsx','C17:F40');
+water_use = xlsread('Data/SampleWaterUse2.xlsx','C17:H40');
 t = 1:30:24*3600*days;
 demand_profiles = zeros(days,2880,6);
-time_per_use = [8.5*60 30 30 30];
-std_dev = [3*60 5 5 5];
+time_per_use = [7.8*60 30 30 30 9.8*60 6.7*60];
+freq_dev = [0.1 0.75 2 2 0.1 0.1];
 for i = 1:days
     for j = 0:23
         hour_start = j*3600; 
         hour_end = (j+1)*3600;
-        for z = 1:4
-            if water_use(j+1,z) > 0
-                start_times = linspace(hour_start,hour_end,water_use(j+1,z));
+        for z = 1:6
+            freq = round(normrnd(water_use(j+1,z),freq_dev(z)));
+            if freq > 0
+                if freq > 1
+                    start_times = linspace(hour_start,hour_end,freq);
+                else
+                    start_times = [(hour_start+hour_end)/2];
+                end
+                 
                 end_times = start_times + time_per_use(z);
                 for u = 1:size(start_times,2)
-                    t_start = round(start_times(u)/30 + 1);
-                    t_end = round(end_times(u)/30+1);
-                    demand_profiles(i,t_start:t_end,z) = 1;
+                    
+                    t_start = floor(floor(start_times(u)/30) + 1);
+                    t_end = floor(floor(end_times(u)/30)+1);
+                    
+                    if t_end < 2881
+                        demand_profiles(i,t_start:t_end,z) = 1;
+                    end
+                    
                 end
             end
         end
     end
 end
 
-demand_profiles = reshape(demand_profiles, [size(t,2) 6]);
-demand_profiles = timeseries(demand_profiles,t);
+demand_series = zeros(size(t,2),6);
+for i = 0:(days-1)
+    demand_series((1+2880*i):2880*(i+1),:) = squeeze(demand_profiles(i+1,:,:));
+end
+
+demand_profiles = timeseries(demand_series,t);
          
 
