@@ -35,7 +35,7 @@ pipe_d = .5; % in
 c = 130^1.852;
 d = pipe_d^4.8704;
 L = [10 2 3 3 1 1]'; % length of pipes [ft]
-G = 4.52/(c*d)*diag(L);
+%G = 4.52/(c*d)*diag(L);
 max_head = 100; % psi
 min_head = 10; % psi
 max_pipeflow = 30; % gpm
@@ -76,8 +76,8 @@ G = diag(g_node);
 for m = 2:N-1
     G(m,[1:(m-1), (m+1):N]) = g_branch(m,:);
 end
-G(1,[2:N]) = g_branch(1,:);
-G(N,[1:N-1]) = g_branch(N,:);
+G(1,2:N) = g_branch(1,:);
+G(N,(1:N-1)) = g_branch(N,:);
 
 %% Optimization
 
@@ -94,6 +94,7 @@ H = sdpvar(N,Nf); % pressure head
 Q = sdpvar(S,Nf); % pipe flowrate
 C = sdpvar(T,Nf); % water inflow
 D = sdpvar(T,Nf); % water outflow
+v_record = sdpvar(2,Nf);
 
 W_pull = sdpvar(N,Nf); % inflow from util and grey
 W_waste = sdpvar(N,Nf); % waste outflow
@@ -102,10 +103,10 @@ P_pump = sdpvar(1,Nf); % pump power [kw]
 W_demand = sdpvar(N,Nf);
 
 % pipe linearization variables
-J = 2;
-lam = sdpvar(S,J,Nf);
-q = sdpvar(S,J,Nf);
-al = sdpvar(S,J,Nf);
+% J = 2;
+% lam = sdpvar(S,J,Nf);
+% q = sdpvar(S,J,Nf);
+% al = sdpvar(S,J,Nf);
 
 %%
 % mpc
@@ -113,10 +114,11 @@ constraints = [];
 objective = 0;
 v = vp0;
 v_cist = v_cist0;
-for k = 1:100 % need to change to Nf
+
+for k = 1:5 % need to change to Nf
     
     % volume evolution
-    v = v + C(:,k) - D(:,k);
+    v = v + step*(C(:,k) - D(:,k));
     
 %     if k > 1
 %         inflow = M*W_rec{k-1};
@@ -128,13 +130,12 @@ for k = 1:100 % need to change to Nf
     
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
-    objective = objective + W_pull(1,k)*phi_water + P_pump(1,k)*phi_e(k) + W_waste(1,k)*phi_e(k);
     
     % constraints
     constraints = [constraints,
         
         % tanks
-        v == D1*lambda*H(:,k) + D2,
+        v == D1*lambda*.433*H(:,k) + D2,
         [0; 0] <= v <= [v1; v3],
         0 <= v_cist <= 50,
         0 <= C(:,k) <= max_inflow,
@@ -142,7 +143,7 @@ for k = 1:100 % need to change to Nf
         
         % pressure at utility and grey cistern'
 %         M*H == [50; v_cist*rho*g/(a2*6894.76)],
-        M*H(:,k) == [60; 40],
+        .433*M*H(:,k) == [60; 40],
         
         % pressure loss in pipes
         H(:,k) >= 0,
@@ -155,16 +156,18 @@ for k = 1:100 % need to change to Nf
 %         lam(:,J,k) <= al(:,J-1,k),
 %         0 <= lam(:,:,k) <= 1,
 
-        A*Q(:,k) == G*H(:,k)
+        A*Q(:,k) == G*0.433*H(:,k)
         
         % pumps
-        70 <= B*A'*H(:,k) <= 80,
-        P_pump(:,k) == B*Q(:,k)*B*A'*H(:,k)/435 + 70*10^-3,
+        70 <= B*A'*0.433*H(:,k) <= 80,
+        P_pump(:,k) == B*Q(:,k)*B*A'*.433*H(:,k)/435 + 70*10^-3,
+        
+        % record water levels
+        v_record(:,k) == v,
         
         % water conservation
         W_waste([1:5,7],k) == zeros(6,1),
-%         W_waste(:,k)(6) >= 0.5*B*Q,
-        W_waste(6,k) >= 0,
+        W_waste(6,k) >= 0 %0.5*B*Q,
         
         W_demand(3,k) == demand_minute(k)*.3,
         W_demand(4,k) == demand_minute(k)*.7,
@@ -174,39 +177,55 @@ for k = 1:100 % need to change to Nf
         W_pull([1,5],k) >= zeros(2,1),
         W_pull(:,k) - W_demand(:,k) - W_waste(:,k) == A*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
         
-    for j = 2:J-1
-        constraints = [constraints, lam(:,j) <= al(:,j-1) + al(:,j)]
-    end
+        
+%     for j = 2:J-1
+%         constraints = [constraints, lam(:,j) <= al(:,j-1) + al(:,j)]
+%     end
 end
 
 %% optimize
 optimize([constraints, v_cist0 == 25, vp0 == V0], objective); 
 
-%% test
-for i = 1:5
-    display('Head')
-    value(H(:,i))'
-    display('')
-    display('Flow rate')
-    value(Q(:,i))'
-    display('')
-    display('volume')
-    value(v)
-    display('')
-    display('W pull')
-    value(W_pull(:,i))'
-    display('')
-    display('W demand')
-    value(W_demand(:,i))'
-    display('')
-    display('W waste')
-    value(W_waste(:,i))'
-    display('Pump power')
-    value(P_pump(:,i))
-    display('tank inflow')
-    value(C(:,i))
-    display('tank draw')
-    value(D(:,i)) 
-end
-display('Objective')
-value(objective)
+%% plots
+figure
+plot(1:k,value(.433*H(:,1:k)))
+title("Pressure (psi)")
+legend("n1","n2","n3","n4","n5","n6", "n7")
+
+figure
+plot(1:k,value(Q(:,1:k)))
+title("Flows (gpm)")
+legend("arc1","arc2","arc3","arc4","arc5","arc6")
+
+figure
+plot(1:k,value(W_pull([1,5],1:k)))
+title("Water pulled (gpm)")
+legend("utility pull","grey pull")
+
+figure
+plot(1:k,value(W_demand([3 4],1:k)))
+title("Water demand (gpm)")
+legend("potable", "recycled")
+
+figure
+plot(1:k,value(W_waste(:,1:k)))
+title("Waste flow (gpm)")
+
+figure
+plot(1:k,value(P_pump(:,1:k)))
+title("Pump power (Watts)")
+
+figure
+plot(1:k,value(C(:,1:k)))
+title("Tank inflow")
+legend("potable","recycled")
+
+figure
+plot(1:k,value(D(:,1:k)))
+title("Tank outflow")
+legend("potable","recycled")
+
+figure
+plot(1:k,value(v_record(:,1:k)))
+title("Tank volumes")
+legend("potable", "recycled")
