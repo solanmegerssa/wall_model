@@ -40,7 +40,7 @@ title("total rain fall")
 xlim([ts(1),ts(end)])
 
 %%
-filename = "WaterBalance.xlsx";
+filename = "WaterBalanceNormal.xlsx";
 water_balance_data = zeros(size(sim_potable));
 water_balance_data(:,1) = sim_vol_cist.data;
 water_balance_data(:,2) = sim_vol_grey.data;
