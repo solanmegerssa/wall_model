@@ -19,11 +19,11 @@ ylabel("gallons")
 figure
 hold on
 plot(sim_vol_cist);
-plot(sim_vol_grey);
+plot(sim_v_rec);
 plot(timeseries(sim_v_rec,ts))
 xlabel("time")
 ylabel("gallons")
-legend("volume rain", "volume grey", "volume recycled")
+legend("volume rain", "volume grey")
 title("water balance")
 
 figure
