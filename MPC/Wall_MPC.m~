@@ -115,7 +115,7 @@ objective = 0;
 v = vp0;
 v_cist = v_cist0;
 
-for k = 1:10 % need to change to Nf
+for k = 1:20 % need to change to Nf
     
     % volume evolution
     v = v + step*(C(:,k) - D(:,k));
@@ -148,8 +148,8 @@ for k = 1:10 % need to change to Nf
         
         % pressure loss in pipes
         H(:,k) >= 0,
-        H([2,7],k) >= 50,
-%        -max_pipeflow <= Q(:,k) <= max_pipeflow,
+        H([2,7],k) >= 50
+        -max_pipeflow <= Q(:,k) <= max_pipeflow,
 %         Q(:,k) == sum(q(:,:,k).*lam(:,:,k),2),
 %         -A'*H(:,k) == sum(G*sign(q(:,:,k)).*q(:,:,k).^1.852.*lam(:,:,k),2),
 %         sum(al(:,J-1,k),2) == 1,
@@ -214,9 +214,9 @@ figure
 plot(1:k,value(W_waste(6,1:k)),'LineWidth',2)
 title("Waste flow (gpm)")
 
-% figure
-% plot(1:k,value(P_pump(:,1:k)),'LineWidth',2)
-% title("Pump power (Watts)")
+figure
+plot(1:k,value(P_pump(:,1:k)),'LineWidth',2)
+title("Pump power (Watts)")
 
 % figure
 % plot(1:k,value(C(:,1:k)),'LineWidth',2)
@@ -237,4 +237,3 @@ figure
 plot(1:k,value(v_record(:,1:k)),'LineWidth',2)
 title("Tank volumes")
 legend("potable", "recycled")
-
