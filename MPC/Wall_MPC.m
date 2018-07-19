@@ -102,11 +102,6 @@ W_rec = sdpvar(N,Nf); % recycle flow
 P_pump = sdpvar(1,Nf); % pump power [kw]
 W_demand = sdpvar(N,Nf);
 
-% pipe linearization variables
-% J = 2;
-% lam = sdpvar(S,J,Nf);
-% q = sdpvar(S,J,Nf);
-% al = sdpvar(S,J,Nf);
 
 %%
 % mpc
@@ -149,15 +144,6 @@ for k = 1:10 % need to change to Nf
         % pressure loss in pipes
         H(:,k) >= 0,
         H([2,7],k) >= 50,
-%        -max_pipeflow <= Q(:,k) <= max_pipeflow,
-%         Q(:,k) == sum(q(:,:,k).*lam(:,:,k),2),
-%         -A'*H(:,k) == sum(G*sign(q(:,:,k)).*q(:,:,k).^1.852.*lam(:,:,k),2),
-%         sum(al(:,J-1,k),2) == 1,
-%         sum(lam(:,:,k),2) == 1,
-%         lam(:,1,k) <= al(:,1,k),
-%         lam(:,J,k) <= al(:,J-1,k),
-%         0 <= lam(:,:,k) <= 1,
-
         A*Q(:,k) == G*0.433*H(:,k),
         Q(3,k) >= 0,
         
@@ -179,11 +165,6 @@ for k = 1:10 % need to change to Nf
         W_pull([2:4,6:7],k) == zeros(5,1),
         W_pull([1,5],k) >= zeros(2,1),
         W_pull(:,k) - W_demand(:,k) - W_waste(:,k) == A*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
-        
-        
-%     for j = 2:J-1
-%         constraints = [constraints, lam(:,j) <= al(:,j-1) + al(:,j)]
-%     end
 end
 
 %% optimize
