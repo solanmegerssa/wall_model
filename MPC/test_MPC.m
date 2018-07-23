@@ -1,25 +1,25 @@
 %% Sim setup
 
 % graph properties
-S = 3; % number of arcs
-N = 4; % number of nodes
+S = 4; % number of arcs
+N = 5; % number of nodes
 T = 1; % number of tanks
 
 % node-arc incidence matrix
-A = [1 0 0; -1 1 0; 0 -1 -1; 0 0 1];
+A = [1 0 0 0; -1 1 0 0; 0 -1 -1 1; 0 0 1 0; 0 0 0 -1];
 
 % pump-arc incidence matrix
-B = [0 0 1];
+B = [0 0 1 0];
 
 % reservoir-node incidenc matrix
-M = [1 0 0 0; 0 0 0 1];
+M = [1 0 0 0 0; 0 0 0 1 0];
 
 % tank-node incidence matrix
-lambda = [0 1 0 0];
+lambda = [0 1 0 0 0];
 
 % tank parameters
 v1 = 100.0; % gal
-v0 = 75; % gal
+v0 = 50; % gal
 max_inflow = 20; % gpm
 max_outflow = 20; % gpm
 
@@ -30,7 +30,7 @@ D2 = -15;
 % pipe parameters
 pipe_d = .5; % in
 d = pipe_d^4.8704;
-L = [10 2 2]'; % length of pipes [ft]
+L = [10 2 2 20]'; % length of pipes [ft]
 max_head = 100; % psi
 min_head = 10; % psi
 max_pipeflow = 30; % gpm
@@ -53,7 +53,7 @@ rho = 998; % kg/m^2
 g = 9.8; % m/s^2
 
 % linearized pipe parameters
-h0 = 1/.43*[60 55 50 60]'; % m
+h0 = 1/.43*[60 50 48 60 14.7]'; % m
 dh0 = A'*h0; % m
 c = 1.22E10;
 e1 = 1.85;
@@ -84,7 +84,8 @@ G(N,(1:N-1)) = g_branch(N,:);
 % Random demand
 t_hours = 0:60:23*60;
 demand = [0 0 0 0 1 4 11 12 8 8 11 5 2 3 5 7 9 6 8 6 6 3 2 1]; % hourly demand gph
-demand_minute = interp1(t_hours, demand, ts)/60; %  normrnd(0.5,0.1,1,Nf)
+demand_minute = interp1(t_hours, demand, ts)/60;
+demand_minute(demand_minute > 0.01) = demand_minute(demand_minute > 0.01) + normrnd(0.5, .25, [size(demand_minute(demand_minute > 0.01))]);
 demand_minute(demand_minute<0) = 0;
 
 % decision variables and initial condition
@@ -95,6 +96,8 @@ C = sdpvar(T,Nf); % water inflow [gal/min]
 D = sdpvar(T,Nf); % water outflow [gal/min]
 v_record = sdpvar(T,Nf); % record of tank vol [gal]
 O = sdpvar(N,N,Nf); % valve variables
+%O_idx = size(G,1)*size(G,2)*
+
 
 W_pull = sdpvar(N,Nf); % inflow from util and grey
 W_rec = sdpvar(N,Nf); % recycle flow
@@ -116,8 +119,8 @@ for k = 1:20 % need to change to Nf
     
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
-    objective = objective + W_pull(1,k)*phi_water + W_pull(4,k)*phi_water*3 ; % abs((.43*H(3,k) - 50)) + P_pump(1,k)*phi_e(k)
-    
+    objective = objective + W_pull(1,k)*phi_water + W_pull(4,k)*phi_e(k+1000); % + abs((.43*H(3,k) - 50)); % + P_pump(1,k)*phi_e(k)
+    O_k = O(:,:,k);
     % constraints
     constraints = [constraints,
         
@@ -132,35 +135,37 @@ for k = 1:20 % need to change to Nf
         
         % pressure loss in pipes
         H(:,k) >= 0,
+        H(5,k) == 14.7
         abs(.433*H(2,k) - 50) <= 10,
-        %abs(.433*H(3,k) - 50) <= 10,
+%         abs(.433*H(3,k) - 50) <= 10,
         A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),       
-        Q(2,k) >= 0,
+        Q([2,4],k) >= 0,
 
         % valves
-        diag(O(:,:,k)) == 1,
-        0 <= diag(O(:,:,k),1) <= 1,
-        0 == diag(O(:,:,k),2),
-        0 == diag(O(:,:,k),3),
+        diag(O_k) == 1,
+        0 <= O_k(G ~= 0) <= 1,
+        O_k(G == 0) == 0,
         
         % pumps
-%         40 <= B*A'*0.433*H(:,k) <= 80,
+%         0 <= B*A'*0.433*H(:,k) <= 80,
+        B*Q(:,k) > 0,
 %         P_pump(:,k) == B*Q(:,k)*B*A'*.433*H(:,k)/435 + 70*10^-3,
         
         % record water levels
         v_record(:,k) == v,
         
-        W_demand(3,k) == demand_minute(k),
-        W_demand([1:2, 4],k) == zeros(3,1),
+        W_demand(5,k) == demand_minute(k+1000),
+        W_demand([1:4],k) == zeros(4,1),
         
-        W_pull([2:3],k) == zeros(2,1),
+        W_pull([2:3, 5],k) == zeros(3,1),
         W_pull([1,4],k) >= 0,
-%         W_pull(:,k) <= max_inflow
+        W_pull(:,k) <= max_inflow
         W_pull(:,k) - W_demand(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
 end
 
 %% optimize
-optimize([constraints, vp0 == v0], objective); 
+options = sdpsettings('solver','fmincon','fmincon.TolCon', 0.5, 'fmincon.MaxIter', 300);
+optimize([constraints, vp0 == v0], objective, options); 
 
 %% plots
 figure
@@ -171,17 +176,17 @@ legend("utility","potable tank","combine junction 1","recycle cistern")
 figure
 plot(1:k,15.8*value(Q(:,1:k)),'LineWidth',2)
 title("Flows (gpm)")
-legend("utility-potable tank","potable-combine1","recycle-combine")
+legend("utility-potable tank","potable-combine1","recycle-combine", "end use")
 
 figure
 plot(1:k,value(W_pull([1,4],1:k)),'LineWidth',2)
 title("Water pulled (gpm)")
 legend("utility pull","recycle pull")
 
-figure
-plot(1:k,value(W_demand([3 4],1:k)),'LineWidth',2)
-title("Water demand (gpm)")
-legend("potable", "recycled")
+% figure
+% plot(1:k,value(W_demand(5,1:k)),'LineWidth',2)
+% title("Water demand (gpm)")
+% legend("potable")
 
 % figure
 % plot(1:k,.0013*value(P_pump(:,1:k)),'LineWidth',2)
@@ -197,10 +202,10 @@ legend("potable", "recycled")
 % title("Tank outflow")
 % legend("potable","recycled")
 
-figure
-plot(1:k,value(C(:,1:k))-value(D(:,1:k)),'LineWidth',2)
-title("Net tank flow")
-legend("potable","recycled")
+% figure
+% plot(1:k,value(C(:,1:k))-value(D(:,1:k)),'LineWidth',2)
+% title("Net tank flow")
+% legend("potable","recycled")
 
 figure
 plot(1:k,value(v_record(:,1:k)),'LineWidth',2)
@@ -208,6 +213,15 @@ title("Tank volumes")
 legend("potable", "recycled")
 
 figure
-plot(1:k,squeeze(value(O(1,2,1:k))), 1:k,squeeze(value(O(2,3,1:k))),1:k,squeeze(value(O(3,4,1:k))), 'LineWidth',2)
+plot(1:k,squeeze(value(O(1,2,1:k))), 1:k,squeeze(value(O(2,3,1:k))))%,1:k,squeeze(value(O(3,4,1:k))), 'LineWidth',2)
 title("Valve Open")
 legend("utility-potable tank","potable-combine1","recycle-combine")
+
+% figure
+% plot(1:k,squeeze(value(O(1,1,1:k))), 1:k,squeeze(value(O(2,2,1:k))),1:k,squeeze(value(O(3,3,1:k))),1:k,squeeze(value(O(4,4,1:k))),1:k,squeeze(value(O(5,5,1:k))), 'LineWidth',2)
+% title("Node Valve")
+% legend("utility-potable tank","potable-combine1","recycle-combine", "grey", "end use")
+
+figure
+plot(1:k, phi_e(1:k), 'LineWidth',2)
+title("Price Electricity")
