@@ -53,7 +53,7 @@ rho = 998; % kg/m^2
 g = 9.8; % m/s^2
 
 % linearized pipe parameters
-h0 = 1/.43*[60 50 48 60 14.7]'; % m
+h0 = 1/.43*[60 50 48 50 14.7]'; % m
 dh0 = A'*h0; % m
 c = 1.22E10;
 e1 = 1.85;
@@ -62,14 +62,16 @@ e3 = 1/e1 - 1;
 e4 = e3 - 1;
 rk = c*L*.3048/(130^e1*6.35^e2);
 gk = rk.^(-1/e1);
-q0 = gk.*abs(dh0).^e3.*sign(dh0); % L/s
-q0_gal = 15.8*q0
+% q0 = gk.*abs(dh0).^e3.*sign(dh0) % L/s
+q0 = abs(dh0).^(1/e1-1).*dh0.*gk;
+q0_gal = 15.8*q0;
 
 % pipe conductance matrix
 g_branch = e3*gk.*abs(dh0).^e4;
 g_node = abs(A)*g_branch;
-g_branch = diag(g_branch);
-g_branch = -abs(A)*g_branch;
+g_branch = diag(g_branch)
+abs(A)
+g_branch = -abs(A)*g_branch
 
 G = diag(g_node);
 for m = 2:N-1
@@ -96,8 +98,6 @@ C = sdpvar(T,Nf); % water inflow [gal/min]
 D = sdpvar(T,Nf); % water outflow [gal/min]
 v_record = sdpvar(T,Nf); % record of tank vol [gal]
 O = sdpvar(N,N,Nf); % valve variables
-%O_idx = size(G,1)*size(G,2)*
-
 
 W_pull = sdpvar(N,Nf); % inflow from util and grey
 W_rec = sdpvar(N,Nf); % recycle flow
@@ -121,6 +121,7 @@ for k = 1:20 % need to change to Nf
     % cost to filter, cost of waste)
     objective = objective + W_pull(1,k)*phi_water + W_pull(4,k)*phi_e(k+1000); % + abs((.43*H(3,k) - 50)); % + P_pump(1,k)*phi_e(k)
     O_k = O(:,:,k);
+    
     % constraints
     constraints = [constraints,
         
@@ -131,25 +132,26 @@ for k = 1:20 % need to change to Nf
         0 <= D(:,k) <= max_outflow,
         
         % pressure at utility and grey cistern'
-        .433*M*H(:,k) == [60; 60],
+        .433*M*H(:,k) == [60; 40],
         
         % pressure loss in pipes
-        H(:,k) >= 0,
-        H(5,k) == 14.7
+        .433*H([1:4],k) >= 14.7,
+        .433*H(5,k) == 14.7
         abs(.433*H(2,k) - 50) <= 10,
 %         abs(.433*H(3,k) - 50) <= 10,
         A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),       
-        Q([2,4],k) >= 0,
+%         Q(2,k) >= 0,
 
         % valves
         diag(O_k) == 1,
         0 <= O_k(G ~= 0) <= 1,
-        O_k(G == 0) == 0,
+%         O_k(G == 0) == 0,
         
         % pumps
-%         0 <= B*A'*0.433*H(:,k) <= 80,
-        B*Q(:,k) > 0,
-%         P_pump(:,k) == B*Q(:,k)*B*A'*.433*H(:,k)/435 + 70*10^-3,
+        -30 <= B*A'*0.433*H(:,k) <= -5,
+        B*Q(:,k) >= 0,
+        %P_pump(:,k) == B*Q(:,k)*B*A'*.433*H(:,k)/435 + 70*10^-3,
+        1.5 == B*Q(:,k)*(-1*B*A')*.433*H(:,k)/583,
         
         % record water levels
         v_record(:,k) == v,
@@ -164,14 +166,14 @@ for k = 1:20 % need to change to Nf
 end
 
 %% optimize
-options = sdpsettings('solver','fmincon','fmincon.TolCon', 0.5, 'fmincon.MaxIter', 300);
+options = sdpsettings('solver','fmincon','fmincon.TolCon', 0.5, 'fmincon.MaxIter', 1000);
 optimize([constraints, vp0 == v0], objective, options); 
 
 %% plots
 figure
 plot(1:k,value(.433*H(:,1:k)), 'LineWidth',2)
 title("Pressure (psi)")
-legend("utility","potable tank","combine junction 1","recycle cistern")
+legend("utility","potable tank","combine junction 1","recycle cistern", "atm")
 
 figure
 plot(1:k,15.8*value(Q(:,1:k)),'LineWidth',2)
@@ -213,9 +215,9 @@ title("Tank volumes")
 legend("potable", "recycled")
 
 figure
-plot(1:k,squeeze(value(O(1,2,1:k))), 1:k,squeeze(value(O(2,3,1:k))))%,1:k,squeeze(value(O(3,4,1:k))), 'LineWidth',2)
+plot(1:k,squeeze(value(O(1,2,1:k))), 1:k,squeeze(value(O(2,3,1:k))),1:k,squeeze(value(O(3,4,1:k))),1:k,squeeze(value(O(3,5,1:k))), 'LineWidth',2)
 title("Valve Open")
-legend("utility-potable tank","potable-combine1","recycle-combine")
+legend("utility-potable tank","potable-combine1","recycle-combine", "combine-appliance")
 
 % figure
 % plot(1:k,squeeze(value(O(1,1,1:k))), 1:k,squeeze(value(O(2,2,1:k))),1:k,squeeze(value(O(3,3,1:k))),1:k,squeeze(value(O(4,4,1:k))),1:k,squeeze(value(O(5,5,1:k))), 'LineWidth',2)
