@@ -53,7 +53,7 @@ rho = 998; % kg/m^2
 g = 9.8; % m/s^2
 
 % linearized pipe parameters
-h0 = 1/.43*[60 50 48 50 14.7]'; % m
+h0 = 1/.43*[60 50 48 50 0]'; % m
 dh0 = A'*h0; % m
 c = 1.22E10;
 e1 = 1.85;
@@ -63,22 +63,31 @@ e4 = e3 - 1;
 rk = c*L*.3048/(130^e1*6.35^e2);
 gk = rk.^(-1/e1);
 % q0 = gk.*abs(dh0).^e3.*sign(dh0) % L/s
-q0 = abs(dh0).^(1/e1-1).*dh0.*gk;
+q0 = abs(dh0).^(1/e1-1).*sign(dh0).*gk;
 q0_gal = 15.8*q0;
 
 % pipe conductance matrix
 g_branch = e3*gk.*abs(dh0).^e4;
 g_node = abs(A)*g_branch;
-g_branch = diag(g_branch)
-abs(A)
-g_branch = -abs(A)*g_branch
+g_branch = diag(g_branch);
+g_branch = -abs(A)*g_branch;
 
 G = diag(g_node);
-for m = 2:N-1
-    G(m,[1:(m-1), (m+1):N]) = g_branch(m,:);
+for i = 1:S
+    j1 = 0;
+    for j = 1:N
+        if g_branch(j,i) ~= 0
+            if j1 == 0
+                j1 = j;
+            else
+                j2 = j;
+            end
+        end
+    end
+    G(j1,j2) = g_branch(j1,i);
+    G(j2,j1) = g_branch(j1,i);
 end
-G(1,2:N) = g_branch(1,:);
-G(N,(1:N-1)) = g_branch(N,:);
+G
 
 
 %% Optimization
@@ -135,20 +144,19 @@ for k = 1:20 % need to change to Nf
         .433*M*H(:,k) == [60; 40],
         
         % pressure loss in pipes
-        .433*H([1:4],k) >= 14.7,
-        .433*H(5,k) == 14.7
+        .433*H([1:4],k) >= 0,
+        .433*H(5,k) == 0
         abs(.433*H(2,k) - 50) <= 10,
-%         abs(.433*H(3,k) - 50) <= 10,
+%         abs(.433*H(3,k) - 50) <= 5,
         A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),       
 %         Q(2,k) >= 0,
 
         % valves
-        diag(O_k) == 1,
         0 <= O_k(G ~= 0) <= 1,
-%         O_k(G == 0) == 0,
+        O_k(G == 0) == 0,
         
         % pumps
-        -30 <= B*A'*0.433*H(:,k) <= -5,
+        -30 <= B*A'*0.433*H(:,k) <= 0,
         B*Q(:,k) >= 0,
         %P_pump(:,k) == B*Q(:,k)*B*A'*.433*H(:,k)/435 + 70*10^-3,
         1.5 == B*Q(:,k)*(-1*B*A')*.433*H(:,k)/583,
@@ -163,6 +171,12 @@ for k = 1:20 % need to change to Nf
         W_pull([1,4],k) >= 0,
         W_pull(:,k) <= max_inflow
         W_pull(:,k) - W_demand(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
+    
+    if demand_minute(k+1000) >= 0.001
+        constraints = [constraints, O_k(3,5) == 1];
+    else
+        constraints = [constraints, O_k(3,5) == 0];
+    end
 end
 
 %% optimize
@@ -204,15 +218,15 @@ legend("utility pull","recycle pull")
 % title("Tank outflow")
 % legend("potable","recycled")
 
-% figure
-% plot(1:k,value(C(:,1:k))-value(D(:,1:k)),'LineWidth',2)
-% title("Net tank flow")
-% legend("potable","recycled")
+figure
+plot(1:k,value(C(:,1:k))-value(D(:,1:k)),'LineWidth',2)
+title("Net tank flow")
+legend("potable")
 
 figure
 plot(1:k,value(v_record(:,1:k)),'LineWidth',2)
 title("Tank volumes")
-legend("potable", "recycled")
+legend("potable")
 
 figure
 plot(1:k,squeeze(value(O(1,2,1:k))), 1:k,squeeze(value(O(2,3,1:k))),1:k,squeeze(value(O(3,4,1:k))),1:k,squeeze(value(O(3,5,1:k))), 'LineWidth',2)
