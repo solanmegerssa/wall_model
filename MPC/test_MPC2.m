@@ -112,7 +112,6 @@ W_pull = sdpvar(N,Nf); % inflow from util and grey
 W_rec = sdpvar(N,Nf); % recycle flow
 P_pump = sdpvar(1,Nf); % pump power [kw]
 W_demand = sdpvar(N,Nf);
-flex = sdpvar(N,Nf); % flex in water consumption
 
 
 %%
@@ -122,14 +121,14 @@ objective = 0;
 v = vp0;
 %v_cist = v_cist0;
 
-for k = 1:20 % need to change to Nf
+for k = 1:50 % need to change to Nf
     
     % volume evolution
     v = v + step*(C(:,k) - D(:,k));
     
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
-    objective = objective + W_pull(1,k)*phi_water + W_pull(4,k)*phi_e(k+1000) + abs(10000*sum(flex(:,k))); % + abs((.43*H(3,k) - 50)); % + P_pump(1,k)*phi_e(k)
+    objective = objective + 2*W_pull(1,k)*phi_water + W_pull(4,k)*phi_e(k+1000)*PD_water; % + abs((.43*H(3,k) - 50)); % + P_pump(1,k)*phi_e(k)
     O_k = O(:,:,k);
     
     % constraints
@@ -148,7 +147,7 @@ for k = 1:20 % need to change to Nf
         .433*H([1:4],k) >= 0,
         .433*H(5,k) == 0
         abs(.433*H(2,k) - 50) <= 10,
-        abs(.433*H(3,k) - 50) <= 5,
+%         abs(.433*H(3,k) - 50) <= 5,
         A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),       
         Q(2,k) >= 0,
 
@@ -171,7 +170,6 @@ for k = 1:20 % need to change to Nf
         W_pull([2:3, 5],k) == zeros(3,1),
         W_pull([1,4],k) >= 0,
         W_pull(:,k) <= max_inflow,
-%         -5 < flex(:,k) < 5, 
         W_pull(:,k) - W_demand(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
     
     if demand_minute(k+1000) >= 0.001
