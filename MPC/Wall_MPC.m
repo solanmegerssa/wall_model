@@ -92,13 +92,12 @@ for i = 1:S
 end
 G
 
-%% Optimization
 
 % Random demand
 t_hours = 0:60:23*60;
 demand = [0 0 0 0 1 4 11 12 8 8 11 5 2 3 5 7 9 6 8 6 6 3 2 1]; % hourly demand gph
 demand_minute = interp1(t_hours, demand, ts)/60;
-demand_minute(demand_minute > 0.01) = demand_minute(demand_minute > 0.01) + normrnd(0.5, .25, [size(demand_minute(demand_minute > 0.01))]);
+demand_minute(demand_minute > 0.01) = demand_minute(demand_minute > 0.01);
 demand_minute(demand_minute<0) = 0;
 
 % decision variables and initial condition
@@ -123,7 +122,7 @@ objective = 0;
 v = vp0;
 %v_cist = v_cist0;
 
-for k = 1:30 % need to change to Nf
+for k = 1:20 % need to change to Nf
     
     % volume evolution
     v = v + step*(C(:,k) - D(:,k));
@@ -131,7 +130,6 @@ for k = 1:30 % need to change to Nf
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
     O_k = O(:,:,k);
-    
     % constraints
     constraints = [constraints,
         
@@ -149,6 +147,8 @@ for k = 1:30 % need to change to Nf
         .433*H([8,9],k) == 0
         A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),       
         Q(2,k) >= 0,
+        Q(3,k) >= 0,
+        Q(4,k) >= 0,
 
         % valves
         0 <= O_k(G ~= 0) <= 1,
@@ -157,7 +157,6 @@ for k = 1:30 % need to change to Nf
         % pumps
         -30 <= B*A'*0.433*H(:,k) <= 0,
         B*Q(:,k) >= 0,
-%         1.5 == B*Q(:,k)*(-1*B*A')*.433*H(:,k)/583,
         
         % record water levels
         v_record(:,k) == v,
@@ -170,15 +169,9 @@ for k = 1:30 % need to change to Nf
         W_pull([1,5],k) >= 0,
         W_pull(:,k) <= max_inflow,
         W_pull(:,k) - W_demand(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
-    
-    if demand_minute(k+1000) >= 0.001
-        constraints = [constraints, O_k(3,8) == 1];
-    else
-        constraints = [constraints, O_k(3,8) == 0];
-    end
 end
 
-x0 = optimize([constraints, vp0 == V0], 0, sdpsettings('fmincon.MaxIter',500,'fmincon.TolCon', 0.05))
+x0 = optimize([constraints, vp0 == V0], 0, sdpsettings('fmincon.MaxIter',100, 'fmincon.TolCon', 0.1))
 
 %% solve full problem
 constraints = [];
@@ -186,14 +179,14 @@ objective = 0;
 v = vp0;
 %v_cist = v_cist0;
 
-for k = 1:30 % need to change to Nf
+for k = 1:20 % need to change to Nf
     
     % volume evolution
     v = v + step*(C(:,k) - D(:,k));
     
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
-    objective = objective + W_pull(1,k)*phi_water + W_pull(5,k)*phi_e(k+1000)*PD_water; % + abs((.43*H(3,k) - 50)); % + P_pump(1,k)*phi_e(k)
+    objective = objective + W_pull(1,k)*phi_water + W_pull(5,k)*phi_e(k+1000)*PD_water;
     O_k = O(:,:,k);
     
     % constraints
@@ -214,6 +207,8 @@ for k = 1:30 % need to change to Nf
         abs(.433*H([2,7],k) - 50) <= 10*ones(2,1),
         A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),       
         Q(2,k) >= 0,
+        Q(3,k) >= 0,
+        Q(4,k) >= 0
 
         % valves
         0 <= O_k(G ~= 0) <= 1,
@@ -222,7 +217,6 @@ for k = 1:30 % need to change to Nf
         % pumps
         -30 <= B*A'*0.433*H(:,k) <= 0,
         B*Q(:,k) >= 0,
-        %P_pump(:,k) == B*Q(:,k)*B*A'*.433*H(:,k)/435 + 70*10^-3,
         1.5 == B*Q(:,k)*(-1*B*A')*.433*H(:,k)/583,
         
         % record water levels
@@ -236,15 +230,9 @@ for k = 1:30 % need to change to Nf
         W_pull([1,5],k) >= 0,
         W_pull(:,k) <= max_inflow,
         W_pull(:,k) - W_demand(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
-    
-    if demand_minute(k+1000) >= 0.001
-        constraints = [constraints, O_k(3,8) == 1];
-    else
-        constraints = [constraints, O_k(3,8) == 0];
-    end
 end
 
-options = sdpsettings('solver','fmincon','fmincon.TolCon', 0.5, 'fmincon.MaxIter', 250, 'usex0',1);
+options = sdpsettings('solver','fmincon','fmincon.MaxIter', 250, 'usex0',1, 'fmincon.TolCon', .1);
 optimize([constraints, vp0 == V0], objective, options); 
 
 %% plots
@@ -254,7 +242,7 @@ title("Pressure (psi)")
 legend("utility","potable tank","combine junction 1","combine junction 2","grey cistern","RO-waste", "recycle tank")
 
 figure
-plot(1:k,value(Q(:,1:k)),'LineWidth',2)
+plot(1:k,15.85*value(Q(:,1:k)),'LineWidth',2)
 title("Flows (gpm)")
 legend("utility-potable tank","potable-combine1","combine1-combine2","recycle tank-combine2","RO-recycle tank","grey cistern-RO", "potable use", "grey use")
 
@@ -291,8 +279,8 @@ valves_total = zeros(S,k);
 for i = 1:k
     valves = value(O(:,:,i));
     valves = triu(valves,1);
-    valves = valves(valves~=0)
-    valves_total(:,i) = valves
+    valves = valves(valves~=0);
+    valves_total(:,i) = valves;
 end
 plot(1:k, valves_total,'LineWidth',2)
 legend("utility-potable tank","potable-combine1","combine1-combine2", "recycle-combine", "waste-recycle","grey-waste","potable use","rec use")
