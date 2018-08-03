@@ -97,7 +97,7 @@ G
 t_hours = 0:60:23*60;
 demand = [0 0 0 0 1 4 11 12 8 8 11 5 2 3 5 7 9 6 8 6 6 3 2 1]; % hourly demand gph
 demand_minute = interp1(t_hours, demand, ts)/60;
-demand_minute(demand_minute > 0.01) = demand_minute(demand_minute > 0.01);
+demand_minute(demand_minute > 0.01) = demand_minute(demand_minute > 0.01) + normrnd(0.5, .25, [size(demand_minute(demand_minute > 0.01))]);
 demand_minute(demand_minute<0) = 0;
 
 % decision variables and initial condition
@@ -113,7 +113,8 @@ O = sdpvar(N,N,Nf); % valve variables
 W_pull = sdpvar(N,Nf); % inflow from util and grey
 W_rec = sdpvar(N,Nf); % recycle flow
 P_pump = sdpvar(1,Nf); % pump power [kw]
-W_demand = sdpvar(N,Nf);
+W_demand = sdpvar(N,Nf); % water demand [gal/min]
+W_waste = sdpvar(N,Nf); % waste from RO [gal/min]
 
 
 %% solve relaxed problem (no pump power or pressure at tank constraints)
@@ -145,33 +146,48 @@ for k = 1:20 % need to change to Nf
         % pressure loss in pipes
         .433*H(:,k) >= 0,
         .433*H([8,9],k) == 0
-        A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),       
+        A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),
+        
+        % flow in pipes
         Q(2,k) >= 0,
         Q(3,k) >= 0,
         Q(4,k) >= 0,
-
+        Q(5,k) >= 0,
+      
         % valves
         0 <= O_k(G ~= 0) <= 1,
         O_k(G == 0) == 0,
         
         % pumps
-        -30 <= B*A'*0.433*H(:,k) <= 0,
+        68 >= -1*B*A'*0.433*H(:,k) >= 0,
         B*Q(:,k) >= 0,
         
         % record water levels
         v_record(:,k) == v,
         
+        % water demand
         W_demand(8,k) == .3*demand_minute(k+1000),
         W_demand(9,k) == .7*demand_minute(k+1000)
         W_demand([1:7],k) == zeros(7,1),
         
+        % waste
+        W_waste(6,k) == .5*Q(6,k),
+        W_waste(6,k) >= 0,
+        W_waste([1:5,7:9],k) == zeros(8,1),
+        
+        % water balance
         W_pull([2:4, 6:9],k) == zeros(7,1),
         W_pull([1,5],k) >= 0,
         W_pull(:,k) <= max_inflow,
-        W_pull(:,k) - W_demand(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
+        W_pull(:,k) - W_demand(:,k) - 15.85*W_waste(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
+    
+%     if demand_minute(k) == 0
+%         constraints = [constraints, O_k(3,8) == 0, O_k(4,9) == 0]
+%     end
+    
 end
 
-x0 = optimize([constraints, vp0 == V0], 0, sdpsettings('fmincon.MaxIter',100, 'fmincon.TolCon', 0.1))
+x0 = optimize([constraints, vp0 == V0], 0, sdpsettings('fmincon.MaxIter',250, 'fmincon.TolCon', .01))
 
 %% solve full problem
 constraints = [];
@@ -186,7 +202,7 @@ for k = 1:20 % need to change to Nf
     
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
-    objective = objective + W_pull(1,k)*phi_water + W_pull(5,k)*phi_e(k+1000)*PD_water;
+    objective = objective + W_pull(1,k)*phi_water + 50*W_pull(5,k)*phi_e(k+1000)*PD_water;
     O_k = O(:,:,k);
     
     % constraints
@@ -198,7 +214,7 @@ for k = 1:20 % need to change to Nf
         0 <= C(:,k) <= max_inflow,
         0 <= D(:,k) <= max_outflow,
         
-        % pressure at utility and grey cistern'
+        % pressure at utility and grey cistern
         .433*M*H(:,k) == [60; 40],
         
         % pressure loss in pipes
@@ -206,33 +222,47 @@ for k = 1:20 % need to change to Nf
         .433*H([8,9],k) == 0
         abs(.433*H([2,7],k) - 50) <= 10*ones(2,1),
         A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),       
+        
+        % flow in pipes
         Q(2,k) >= 0,
         Q(3,k) >= 0,
-        Q(4,k) >= 0
-
+        Q(4,k) >= 0,
+        Q(5,k) >= 0,
+      
         % valves
         0 <= O_k(G ~= 0) <= 1,
         O_k(G == 0) == 0,
         
         % pumps
-        -30 <= B*A'*0.433*H(:,k) <= 0,
+        68 >= -1*B*A'*0.433*H(:,k) >= 0,
         B*Q(:,k) >= 0,
-        1.5 == B*Q(:,k)*(-1*B*A')*.433*H(:,k)/583,
+        1.5 == B*Q(:,k)*(-1*B*A')*.433*H(:,k)/(.5*5145),
         
         % record water levels
         v_record(:,k) == v,
         
+        % water demand
         W_demand(8,k) == .3*demand_minute(k+1000),
         W_demand(9,k) == .7*demand_minute(k+1000)
         W_demand([1:7],k) == zeros(7,1),
         
+        % waste
+        W_waste(6,k) == .5*Q(6,k),
+        W_waste(6,k) >= 0,
+        W_waste([1:5,7:9],k) == zeros(8,1),
+        
+        % water balance
         W_pull([2:4, 6:9],k) == zeros(7,1),
         W_pull([1,5],k) >= 0,
         W_pull(:,k) <= max_inflow,
-        W_pull(:,k) - W_demand(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
+        W_pull(:,k) - W_demand(:,k) - 15.85*W_waste(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
+    
+%     if demand_minute(k) == 0
+%         constraints = [constraints, O_k(3,8) == 0, O_k(4,9) == 0]
+%     end
 end
 
-options = sdpsettings('solver','fmincon','fmincon.MaxIter', 250, 'usex0',1, 'fmincon.TolCon', .1);
+options = sdpsettings('solver','fmincon','fmincon.MaxIter', 500, 'usex0',1, 'fmincon.TolCon', .1);
 optimize([constraints, vp0 == V0], objective, options); 
 
 %% plots
@@ -256,9 +286,9 @@ legend("utility pull","grey pull")
 % title("Water demand (gpm)")
 % legend("potable", "recycled")
 
-% figure
-% plot(1:k,value(W_waste(6,1:k)),'LineWidth',2)
-% title("Waste flow (gpm)")
+figure
+plot(1:k,15.85*value(W_waste(6,1:k)),'LineWidth',2)
+title("Waste flow (gpm)")
 
 % figure
 % plot(1:k,value(P_pump(:,1:k)),'LineWidth',2)
