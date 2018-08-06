@@ -123,7 +123,7 @@ objective = 0;
 v = vp0;
 %v_cist = v_cist0;
 
-for k = 1:20 % need to change to Nf
+for k = 1:50 % need to change to Nf
     
     % volume evolution
     v = v + step*(C(:,k) - D(:,k));
@@ -181,10 +181,6 @@ for k = 1:20 % need to change to Nf
         W_pull(:,k) <= max_inflow,
         W_pull(:,k) - W_demand(:,k) - 15.85*W_waste(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
     
-%     if demand_minute(k) == 0
-%         constraints = [constraints, O_k(3,8) == 0, O_k(4,9) == 0]
-%     end
-    
 end
 
 x0 = optimize([constraints, vp0 == V0], 0, sdpsettings('fmincon.MaxIter',250, 'fmincon.TolCon', .01))
@@ -195,7 +191,7 @@ objective = 0;
 v = vp0;
 %v_cist = v_cist0;
 
-for k = 1:20 % need to change to Nf
+for k = 1:50 % need to change to Nf
     
     % volume evolution
     v = v + step*(C(:,k) - D(:,k));
