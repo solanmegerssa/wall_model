@@ -102,7 +102,8 @@ demand_minute(demand_minute<0) = 0;
 
 % decision variables and initial condition
 v_cist0 = sdpvar(1,1); % initial grey cistern vol
-vp0 = sdpvar(T,1); % initial pressure tank vol
+% vp0 = sdpvar(T,1); % initial pressure tank vol
+v = sdpvar(T,Nf);
 H = sdpvar(N,Nf); % pressure head [m]
 Q = sdpvar(S,Nf); % pipe flowrate [l/s]
 C = sdpvar(T,Nf); % water inflow [gal/min]
@@ -120,23 +121,29 @@ W_waste = sdpvar(N,Nf); % waste from RO [gal/min]
 %% solve relaxed problem (no pump power or pressure at tank constraints)
 constraints = [];
 objective = 0;
-v = vp0;
+% v = vp0;
 %v_cist = v_cist0;
 
 for k = 1:50 % need to change to Nf
     
     % volume evolution
-    v = v + step*(C(:,k) - D(:,k));
+%     v = v + step*(C(:,k) - D(:,k));
     
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
+    objective = objective + W_pull(1,k)*phi_water + 50*W_pull(5,k)*phi_e(k+1000)*PD_water;
+    
     O_k = O(:,:,k);
     % constraints
     constraints = [constraints,
         
         % tanks
-        v == D1*lambda*.433*H(:,k) + D2,
-        0 <= v <= v1,
+%         v == D1*lambda*.433*H(:,k) + D2,
+
+        v(:,k+1) == v(:,k) + step*(C(:,k) - D(:,k)),
+        v(:,k) == D1*lambda*.433*H(:,k) + D2,
+        
+        0 <= v(:,k) <= v1,
         0 <= C(:,k) <= max_inflow,
         0 <= D(:,k) <= max_outflow,
         
@@ -146,7 +153,7 @@ for k = 1:50 % need to change to Nf
         % pressure loss in pipes
         .433*H(:,k) >= 0,
         .433*H([8,9],k) == 0
-        A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),
+        %A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),
         
         % flow in pipes
         Q(2,k) >= 0,
@@ -163,7 +170,7 @@ for k = 1:50 % need to change to Nf
         B*Q(:,k) >= 0,
         
         % record water levels
-        v_record(:,k) == v,
+        v_record(:,k) == v(:,k),
         
         % water demand
         W_demand(8,k) == .3*demand_minute(k+1000),
@@ -183,30 +190,35 @@ for k = 1:50 % need to change to Nf
     
 end
 
-x0 = optimize([constraints, vp0 == V0], 0, sdpsettings('fmincon.MaxIter',250, 'fmincon.TolCon', .01))
+x0 = optimize([constraints, v(:,1) == V0], objective, sdpsettings('fmincon.MaxIter',250))
 
 %% solve full problem
 constraints = [];
 objective = 0;
-v = vp0;
+% v = vp0;
 %v_cist = v_cist0;
 
 for k = 1:50 % need to change to Nf
     
     % volume evolution
-    v = v + step*(C(:,k) - D(:,k));
+    %v = v + step*(C(:,k) - D(:,k));
     
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
     objective = objective + W_pull(1,k)*phi_water + 50*W_pull(5,k)*phi_e(k+1000)*PD_water;
+    
     O_k = O(:,:,k);
     
     % constraints
     constraints = [constraints,
         
         % tanks
-        v == D1*lambda*.433*H(:,k) + D2,
-        0 <= v <= v1,
+%         v == D1*lambda*.433*H(:,k) + D2,
+        
+        v(:,k+1) == v(:,k) + step*(C(:,k) - D(:,k)),
+        v(:,k) == D1*lambda*.433*H(:,k) + D2,
+        
+        0 <= v(:,k) <= v1,
         0 <= C(:,k) <= max_inflow,
         0 <= D(:,k) <= max_outflow,
         
@@ -232,10 +244,10 @@ for k = 1:50 % need to change to Nf
         % pumps
         68 >= -1*B*A'*0.433*H(:,k) >= 0,
         B*Q(:,k) >= 0,
-        1.5 == B*Q(:,k)*(-1*B*A')*.433*H(:,k)/(.5*5145),
+        %1.5 == B*Q(:,k)*(-1*B*A')*.433*H(:,k)/(.5*5145),
         
         % record water levels
-        v_record(:,k) == v,
+        v_record(:,k) == v(:,k),
         
         % water demand
         W_demand(8,k) == .3*demand_minute(k+1000),
@@ -252,14 +264,10 @@ for k = 1:50 % need to change to Nf
         W_pull([1,5],k) >= 0,
         W_pull(:,k) <= max_inflow,
         W_pull(:,k) - W_demand(:,k) - 15.85*W_waste(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
-    
-%     if demand_minute(k) == 0
-%         constraints = [constraints, O_k(3,8) == 0, O_k(4,9) == 0]
-%     end
 end
 
 options = sdpsettings('solver','fmincon','fmincon.MaxIter', 500, 'usex0',1, 'fmincon.TolCon', .1);
-optimize([constraints, vp0 == V0], objective, options); 
+optimize([constraints, v(:,1) == V0], objective, options); 
 
 %% plots
 figure
