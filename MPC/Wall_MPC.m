@@ -1,3 +1,24 @@
+%%
+% horizon parameters
+Tf = 23*60; % minutes
+step = .5; % minutes
+Nf = Tf/step;
+
+% cost function params
+PD_water = .03; % kw/gallon
+phi_water = .2; % $/gal
+cost_file = csvread('SimData/June28_CAISOAVERAGEPRICE.csv', 1, 1);
+t = 0:5:(24*60-5);
+ts = step:step:23*60;
+phi_e = interp1(t,cost_file,ts);
+
+% Random demand
+t_hours = 0:60:23*60;
+demand = [0 0 0 0 1 4 11 12 8 8 11 5 2 3 5 7 9 6 8 6 6 3 2 1]; % hourly demand gph
+demand_minute = interp1(t_hours, demand, ts)/60;
+demand_minute(demand_minute > 0.01) = demand_minute(demand_minute > 0.01) + normrnd(0.5, .25, [size(demand_minute(demand_minute > 0.01))]);
+demand_minute(demand_minute<0) = 0;
+
 %% Sim setup
 
 % graph properties
@@ -39,19 +60,6 @@ max_head = 100; % psi
 min_head = 10; % psi
 max_pipeflow = 30; % gpm
 
-% horizon parameters
-Tf = 23*60; % minutes
-step = .5; % minutes
-Nf = Tf/step;
-
-% cost function params
-PD_water = .03; % kw/gallon
-phi_water = .2; % $/gal
-cost_file = csvread('SimData/June28_CAISOAVERAGEPRICE.csv', 1, 1);
-t = 0:5:(24*60-5);
-ts = step:step:23*60;
-phi_e = interp1(t,cost_file,ts);
-
 % water properties
 rho = 998; % kg/m^2
 g = 9.8; % m/s^2
@@ -92,14 +100,6 @@ for i = 1:S
 end
 G
 
-
-% Random demand
-t_hours = 0:60:23*60;
-demand = [0 0 0 0 1 4 11 12 8 8 11 5 2 3 5 7 9 6 8 6 6 3 2 1]; % hourly demand gph
-demand_minute = interp1(t_hours, demand, ts)/60;
-demand_minute(demand_minute > 0.01) = demand_minute(demand_minute > 0.01) + normrnd(0.5, .25, [size(demand_minute(demand_minute > 0.01))]);
-demand_minute(demand_minute<0) = 0;
-
 % decision variables and initial condition
 v_cist0 = sdpvar(1,1); % initial grey cistern vol
 % vp0 = sdpvar(T,1); % initial pressure tank vol
@@ -124,7 +124,7 @@ objective = 0;
 % v = vp0;
 %v_cist = v_cist0;
 
-for k = 1:50 % need to change to Nf
+for k = 1:100 % need to change to Nf
     
     % volume evolution
 %     v = v + step*(C(:,k) - D(:,k));
@@ -198,7 +198,7 @@ objective = 0;
 % v = vp0;
 %v_cist = v_cist0;
 
-for k = 1:50 % need to change to Nf
+for k = 1:100 % need to change to Nf
     
     % volume evolution
     %v = v + step*(C(:,k) - D(:,k));
@@ -229,7 +229,7 @@ for k = 1:50 % need to change to Nf
         .433*H(:,k) >= 0,
         .433*H([8,9],k) == 0
         abs(.433*H([2,7],k) - 50) <= 10*ones(2,1),
-        A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),       
+        A*Q(:,k) - A*q0 == O_k.*G*(H(:,k)-h0),       
         
         % flow in pipes
         Q(2,k) >= 0,
@@ -266,7 +266,7 @@ for k = 1:50 % need to change to Nf
         W_pull(:,k) - W_demand(:,k) - 15.85*W_waste(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
 end
 
-options = sdpsettings('solver','fmincon','fmincon.MaxIter', 500, 'usex0',1, 'fmincon.TolCon', .1);
+options = sdpsettings('solver','fmincon','fmincon.MaxIter', 75, 'usex0',1, 'fmincon.TolCon', .1);
 optimize([constraints, v(:,1) == V0], objective, options); 
 
 %% plots
