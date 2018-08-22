@@ -55,7 +55,7 @@ D2 = [-15; -15];
 % pipe parameters
 pipe_d = .5; % in
 d = pipe_d^4.8704;
-L = [1 10 10 15 2]'; % length of pipes [ft]
+L = [1 10 10 2 2]'; % length of pipes [ft]
 max_head = 100; % psi
 min_head = 10; % psi
 max_pipeflow = 30; % gpm
@@ -65,7 +65,7 @@ rho = 998; % kg/m^2
 g = 9.8; % m/s^2
 
 % linearized pipe parameters
-h0 = 1/.43*[60 50 0 0 40 60 50]'; % m
+h0 = 1/.43*[60 50 0 0 40 61 59]'; % m
 dh0 = A'*h0; % m
 c = 1.22E10;
 e1 = 1.85;
@@ -184,7 +184,7 @@ for k = 1:60 % need to change to Nf
     
 end
 
-x0 = optimize([constraints, v(:,1) == V0], 0, sdpsettings('fmincon.MaxIter',250))
+x0 = optimize([constraints, v(:,1) == V0], objective, sdpsettings('fmincon.MaxIter',250))
 
 %% solve full problem
 constraints = [];
@@ -254,7 +254,7 @@ for k = 1:60 % need to change to Nf
 end
 
 options = sdpsettings('solver','fmincon','fmincon.MaxIter', 100, 'usex0',1, 'fmincon.TolCon', .1);
-optimize([constraints, v(:,1) == V0], 0, options); 
+optimize([constraints, v(:,1) == V0], objective, options); 
 
 %% plots
 figure
