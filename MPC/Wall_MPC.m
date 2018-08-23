@@ -1,8 +1,8 @@
 %%
 % horizon parameters
 Tf = 23*60; % minutes
-step = 1; % minutes
-Nf = Tf/step;
+step = 45; % minutes
+Nf = floor(Tf/step);
 
 % cost function params
 PD_water = .03; % kw/gallon
@@ -14,9 +14,9 @@ phi_e = interp1(t,cost_file,ts);
 
 % Random demand
 t_hours = 0:60:23*60;
-demand = [0 0 0 0 1 4 11 12 8 8 11 5 2 3 5 7 9 6 8 6 6 3 2 1]; % hourly demand gph
-demand_minute = interp1(t_hours, demand, ts)/60;
-demand_minute(demand_minute > 0.01) = demand_minute(demand_minute > 0.01) + normrnd(0.5, .25, [size(demand_minute(demand_minute > 0.01))]);
+demand = [0 0 0 0 1 4 11 12 8 8 11 5 2 3 5 7 9 6 8 6 6 3 2 1]/60; % hourly demand gph
+demand_minute = interp1(t_hours, demand, ts);
+%demand_minute(demand_minute > 0.01) = demand_minute(demand_minute > 0.01) + normrnd(0.5, .25, [size(demand_minute(demand_minute > 0.01))]);
 demand_minute(demand_minute<0) = 0;
 
 %% Sim setup
@@ -55,7 +55,7 @@ D2 = [-15; -15];
 % pipe parameters
 pipe_d = .5; % in
 d = pipe_d^4.8704;
-L = [1 10 10 15 2]'; % length of pipes [ft]
+L = [10 10 10 2 2]'; % length of pipes [ft]
 max_head = 100; % psi
 min_head = 10; % psi
 max_pipeflow = 30; % gpm
@@ -124,17 +124,16 @@ objective = 0;
 % v = vp0;
 %v_cist = v_cist0;
 
-for k = 1:60 % need to change to Nf
+for k = 1:Nf % need to change to Nf
     
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
-    objective = objective + W_pull(1,k)*phi_water + W_pull(5,k)*phi_e(k+1000)*PD_water;
+    objective = objective + W_pull(1,k)*phi_water + W_pull(5,k)*phi_e(k)*PD_water;
     
     O_k = O(:,:,k);
     % constraints
     constraints = [constraints,
      
-        v(:,k+1) == v(:,k) + step*(C(:,k) - D(:,k)),
         v(:,k) == D1*lambda*.433*H(:,k) + D2,
         
         0 <= v(:,k) <= v1,
@@ -147,7 +146,7 @@ for k = 1:60 % need to change to Nf
         % pressure loss in pipes
         .433*H(:,k) >= 0,
         .433*H([3,4],k) == 0
-        %abs(.433*H([2,7],k) - 50) <= 10*ones(2,1),
+        abs(.433*H([2,7],k) - 50) <= 10*ones(2,1),
         %A*Q(:,k) - A*q0 == O(:,:,k).*G*(H(:,k)-h0),
         
         % flow in pipes
@@ -167,12 +166,12 @@ for k = 1:60 % need to change to Nf
         v_record(:,k) == v(:,k),
         
         % water demand
-        W_demand(3,k) == .3*demand_minute(k+1000),
-        W_demand(4,k) == .7*demand_minute(k+1000)
+        W_demand(3,k) == .3*demand_minute(k),
+        W_demand(4,k) == .7*demand_minute(k)
         W_demand([1:2,5:7],k) == zeros(5,1),
         
         % waste
-        W_waste(6,k) == .5*Q(5,k),
+        Q(5,k) >= W_waste(6,k) >= .5*Q(5,k),
         W_waste(6,k) >= 0,
         W_waste([1:5,7],k) == zeros(6,1),
         
@@ -182,6 +181,13 @@ for k = 1:60 % need to change to Nf
         W_pull(:,k) <= max_inflow,
         W_pull(:,k) - W_demand(:,k) - 15.85*W_waste(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
     
+    if demand_minute(k) == 0;
+        constraints = [constraints, O_k(2,3) == 0, O_k(4,7) == 0]
+    end
+    
+    if k < Nf
+            constraints = [constraints, v(:,k+1) == v(:,k) + step*(C(:,k) - D(:,k))]
+    end
 end
 
 x0 = optimize([constraints, v(:,1) == V0], 0, sdpsettings('fmincon.MaxIter',250))
@@ -192,18 +198,17 @@ objective = 0;
 % v = vp0;
 %v_cist = v_cist0;
 
-for k = 1:60 % need to change to Nf
+for k = 1:Nf % need to change to Nf
 
     % objective optimizes for cost per unit water (cost of utility water,
     % cost to filter, cost of waste)
-    objective = objective + W_pull(1,k)*phi_water + W_pull(5,k)*phi_e(k+1000)*PD_water;
+    objective = objective + W_pull(1,k)*phi_water + W_pull(5,k)*phi_e(k)*PD_water + abs(.433*H([2,7],k) - 50);
     
     O_k = O(:,:,k);
     
     % constraints
     constraints = [constraints,
         
-        v(:,k+1) == v(:,k) + step*(C(:,k) - D(:,k)),
         v(:,k) == D1*lambda*.433*H(:,k) + D2,
         
         0 <= v(:,k) <= v1,
@@ -216,7 +221,7 @@ for k = 1:60 % need to change to Nf
         % pressure loss in pipes
         .433*H(:,k) >= 0,
         .433*H([3,4],k) == 0
-        abs(.433*H([2,7],k) - 50) <= 10*ones(2,1),
+        35 <= .433*H([2,7],k) <= 70,
         A*Q(:,k) - A*q0 == O_k.*G*(H(:,k)-h0),       
         
         % flow in pipes
@@ -237,12 +242,12 @@ for k = 1:60 % need to change to Nf
         v_record(:,k) == v(:,k),
         
         % water demand
-        W_demand(3,k) == .3*demand_minute(k+1000),
-        W_demand(4,k) == .7*demand_minute(k+1000)
+        W_demand(3,k) == .3*demand_minute(k),
+        W_demand(4,k) == .7*demand_minute(k)
         W_demand([1:2,5:7],k) == zeros(5,1),
         
         % waste
-        W_waste(6,k) == .5*Q(5,k),
+        Q(5,k) >= W_waste(6,k) >= .5*Q(5,k),
         W_waste(6,k) >= 0,
         W_waste([1:5,7],k) == zeros(6,1),
         
@@ -251,10 +256,18 @@ for k = 1:60 % need to change to Nf
         W_pull([1,5],k) >= 0,
         W_pull(:,k) <= max_inflow,
         W_pull(:,k) - W_demand(:,k) - 15.85*W_waste(:,k) == A*15.85*Q(:,k) + lambda'*(C(:,k)-D(:,k))]
+    
+    if demand_minute(k) == 0;
+        constraints = [constraints, O_k(2,3) == 0, O_k(4,7) == 0]
+    end
+    
+    if k < Nf
+            constraints = [constraints, v(:,k+1) == v(:,k) + step*(C(:,k) - D(:,k))]
+    end
 end
 
-options = sdpsettings('solver','fmincon','fmincon.MaxIter', 100, 'usex0',1, 'fmincon.TolCon', .1);
-optimize([constraints, v(:,1) == V0], 0, options); 
+options = sdpsettings('solver','fmincon','fmincon.MaxIter', 200, 'usex0',1, 'fmincon.TolCon', .1);
+optimize([constraints, v(:,1) == V0], objective, options); 
 
 %% plots
 figure
@@ -295,14 +308,19 @@ title("Tank volumes")
 legend("potable", "recycled")
 
 figure
-valves_total = zeros(S,k);
-for i = 1:k
+valves_total = zeros(S,Nf);
+for i = 1:Nf
     valves = value(O(:,:,i));
-    valves = triu(valves,1);
-    valves = valves(valves~=0);
-    valves_total(:,i) = valves;
+    valves_tri = triu(valves,1);
+    valves_list = valves_tri(valves_tri~=0);
+    if valves(2,3) == 0
+        valves_total([1,2,5],i) = valves_list;
+        valves_total([3,4],i) = 0;
+    else
+        valves_total(:,i) = valves_list;
+    end
 end
-plot(1:k, valves_total,'LineWidth',2)
+plot(1:Nf, valves_total,'LineWidth',2)
 legend("utility-potable tank","potable use","rec use", "waste-recycle","grey-waste")
 hold on
 title("Valve Open")
