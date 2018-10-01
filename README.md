@@ -19,6 +19,9 @@ volume level, etc of the components in WALL. The most updated model is wall_plum
 
 
 
+
+
+
 MPC is my implementation of a model predictive controller for WALL. This seeks to optimize the use of water over a certain time-span.
 Ideally this timespan would be around 24 hours, but I was only able to optimize over a timespan of about 1 hour without the run time blowing up.
 To run a simulation: 
